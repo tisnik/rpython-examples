@@ -1,0 +1,1310 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+<head>
+<title>RPython vs Cython aneb dvojí přístup k překladu Pythonu do nativního kódu</title>
+<meta name="Author" content="Pavel Tisnovsky" />
+<meta name="Generator" content="vim" />
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<style type="text/css">
+         body {color:#000000; background:#ffffff;}
+         h1  {font-family: arial, helvetica, sans-serif; color:#ffffff; background-color:#c00000; text-align:center; padding-left:1em}
+         h2  {font-family: arial, helvetica, sans-serif; color:#ffffff; background-color:#0000c0; padding-left:1em; text-align:left}
+         h3  {font-family: arial, helvetica, sans-serif; color:#000000; background-color:#c0c0c0; padding-left:1em; text-align:left}
+         h4  {font-family: arial, helvetica, sans-serif; color:#000000; background-color:#e0e0e0; padding-left:1em; text-align:left}
+         a   {font-family: arial, helvetica, sans-serif;}
+         li  {font-family: arial, helvetica, sans-serif; color:#000000; text-align:justify; width:450px;}
+         ol  {font-family: arial, helvetica, sans-serif; color:#000000; text-align:justify; width:450px;}
+         ul  {font-family: arial, helvetica, sans-serif; color:#000000; text-align:justify; width:450px;}
+         p   {font-family: arial, helvetica, sans-serif; color:#000000; text-align:justify;}
+         pre {background:#e0e0e0}
+</style>
+</head>
+
+<body>
+
+<h1>RPython vs Cython aneb dvojí přístup k překladu Pythonu do nativního kódu</h1>
+
+<h3>Pavel Tišnovský</h3>
+
+<p></p>
+
+<h1>Úvodník</h1>
+
+<p></p>
+
+
+
+<h2>Obsah</h2>
+
+<p><a href="#k01">1. Význam písmene &bdquo;R&ldquo; ve jménu RPython</a></p>
+<p><a href="#k02">2. Automatické odvozování typů proměnných, argumentů i návratových hodnot funkcí</a></p>
+<p><a href="#k03">3. (Ne)podpora speciálních metod v&nbsp;RPythonu</a></p>
+<p><a href="#k04">4. Podporované a nepodporované operace při zpracování seznamů</a></p>
+<p><a href="#k05">5. Záporné indexy při výběru podseznamů</a></p>
+<p><a href="#k06">6. Práce s&nbsp;n-ticemi v&nbsp;RPythonu</a></p>
+<p><a href="#k07">*** 7. Nejednoznačnost při volání metody potenciálně různých tříd</a></p>
+<p><a href="#k08">*** 8. Nejednoznačnost při volání metod s&nbsp;různým počtem argumentů</a></p>
+<p><a href="#k09">*** 9. Použití aserce pro zamezení některých chyb při překladu</a></p>
+<p><a href="#k10">10. Alternativní přístup k&nbsp;překladu Pythonu do nativního kódu: projekt Cython</a></p>
+<p><a href="#k11">11. Princip práce Cythonu</a></p>
+<p><a href="#k12">12. Instalace Cythonu</a></p>
+<p><a href="#k13">13. Ukázka překladu Pythonu do spustitelného (nativního) programu</a></p>
+<p><a href="#k14">*** 14. Program pro vytvoření skriptu určeného pro překlad Pythonovského programu do nativního kódu</a></p>
+<p><a href="#k15">*** 15. Soubor Makefile pro překlad a slinkování programu typu &bdquo;Hello world!&ldquo;</a></p>
+<p><a href="#k16">*** 16. Benchmark pro výpočet Mandelbrotovy množiny &ndash; překlad originálního kódu Cythonem</a></p>
+<p><a href="#k17">*** 17. Přidání informace o datových typech argumentů funkce i lokálních proměnných</a></p>
+<p><a href="#k18">*** 18. Výsledky benchmarků a možnosti dalšího vylepšení</a></p>
+<p><a href="#k19">*** 19. Repositář s&nbsp;demonstračními příklady</a></p>
+<p><a href="#k20">20. Odkazy na Internetu</a></p>
+
+
+
+<p><a name="k01"></a></p>
+<h2 id="k01">1. Význam písmene &bdquo;R&ldquo; ve jménu RPython</h2>
+
+<p><a
+href="https://www.root.cz/clanky/rpython-prekvapive-vykonny-dialekt-pythonu-na-nemz-je-zalozen-pypy/">V&nbsp;úvodním
+článku</a> o projektu <i>RPython</i> jsme se seznámili se základními postupy,
+na nichž je tento projekt založen. Připomeňme si ve stručnosti, že RPython je
+určen pro překlad programů napsaných v&nbsp;podmnožině programovacího jazyka
+Python do nativního kódu, ať již se jedná o přímo spustitelný kód či o
+dynamicky linkovanou knihovnu (.so, .dll). Samotný projekt RPython byl vyvinut
+primárně pro autory interpretrů a překladačů dalších programovacích jazyků
+(využit je například <a
+href="https://www.root.cz/clanky/pixie-lehky-skriptovaci-jazyk-s-kouzelnymi-schopnostmi/">v&nbsp;projektu
+Pixie</a>) a autoři RPythonu nepředpokládají, že by byl masivně využíván mimo
+tuto dosti úzce vymezenou oblast (samozřejmě to však nezakazují). Pokud se
+přesto rozhodnete RPython využít ve svém projektu, například pro urychlení
+některých výpočtů, je nutné se již dopředu připravit na tři potenciální
+problémy:</p>
+
+<ul>
+
+<li>Počáteční písmeno v&nbsp;názvu &bdquo;RPython&ldquo; znamená
+&bdquo;restricted&ldquo;, což se týká jak omezení, která nám klade vlastní
+jazyk, tak i omezení dostupných knihoven. Pokud se však skutečně překládají
+výpočty či simulace, nemusí být tato vlastnost RPythonu příliš omezující.</li>
+
+<li>Některá chybová hlášení RPythonu jsou poněkud kryptická a pro jejich
+vyluštění je dobré vědět, jakým způsobem vlastně RPython provádí překlad. Právě
+z&nbsp;tohoto důvodu si v&nbsp;navazujících kapitolách význam některých
+chybových hlášení popíšeme podrobněji.</li>
+
+<li>Čas překladu je v&nbsp;porovnání s&nbsp;dále zmíněným Cythonem významně
+delší. Na mém obstarožním notebooku s&nbsp;procesorem i5 (4&times;M 540 @
+2.53GHz) trvá překlad i jednoduchého programu typu &bdquo;Hello world!&ldquo;
+prakticky přesně 25 sekund, což při vývoji může být otravné. Na druhou stranu
+je většina chyb vedoucích k&nbsp;zastavení překladu detekována již na samotném
+začátku celého procesu (v&nbsp;Cythonu je překlad explicitně rozdělen na
+transformaci do C a spuštění překladače s&nbsp;linkerem).</li>
+
+</ul>
+
+<p>Vraťme se nyní k&nbsp;tématu, kterým jsme se již částečně začali zabývat
+minule. Jedná se o typový systém RPythonu. RPython totiž kvůli překladu do
+nativního kódu potřebuje znát typ proměnných, argumentů funkcí i návratových
+hodnot funkcí. Navíc tuto znalost musí rozšířit z&nbsp;oblasti přiřazení
+hodnoty do proměnné (zde je typ ve všech případech zřejmý) i do všech dalších
+částí programu. Původní varianty RPythonu neumožnily po prvním přiřazení
+hodnoty do proměnné měnit její typ, ovšem současné varianty to umožňují (za
+předpokladu, že se dodrží podmínky popsané později), což je ostatně patrné i
+z&nbsp;dnešního <a
+href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_types_3.py">prvního
+příkladu</a>. Povšimněte si, že se v&nbsp;tomto příkladu jedné lokální proměnné
+postupně přiřazují hodnoty různých typů:</p>
+
+<pre>
+def <strong>entry_point</strong>(argv):
+    x = "one"
+    print x
+    x = 2
+    print x
+    x = None
+    print x
+    x = True
+    print x
+    x = range(10)
+    print x[1]
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    print "*** target ***"
+    return entry_point, None
+</pre>
+
+<p>Tento program by měl jít bez problémů přeložit i spustit.</p>
+
+
+
+<p><a name="k02"></a></p>
+<h2 id="k02">2. Nejčastější chyba při analýze kódu: <strong>UnionError</strong></h2>
+
+<p>Při pohledu na <a href="#k01">předchozí demonstrační příklad</a> by se mohlo
+zdát, že RPython dokáže typ hodnoty určit vlastně kdykoli a kdekoli. Ve
+skutečnosti tomu tak není, což si ukážeme na třech zdánlivě totožných
+příkladech, přičemž první dva příklady jsou přeložitelné, zatímco třetí příklad
+vypíše při pokusu o překlad chybové hlášení.</p>
+
+<p><a
+href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_types_4.py">V&nbsp;prvním
+příkladu</a> je pomocná funkce <strong>f</strong> volána dvakrát, a to
+s&nbsp;argumentem <strong>param</strong> vždy nastaveným na hodnotu
+<strong>False</strong>. V&nbsp;tomto případě překladač při analýze <a
+href="https://en.wikipedia.org/wiki/Control_flow_graph">CFG</a> vlastně nikdy
+neprojde první větví ve funkci <strong>f</strong> a překlad (včetně analýzy
+celého &bdquo;flow&ldquo;) proběhne v&nbsp;pořádku:</p>
+
+<pre>
+def <strong>f</strong>(param):
+    if param:
+        return 42
+    else:
+        return "foobar"
+&nbsp;
+&nbsp;
+def <strong>entry_point</strong>(argv):
+    z = f(False)
+    print z
+&nbsp;
+    w = f(False)
+    print w
+&nbsp;
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    print "*** target ***"
+    return entry_point, None
+</pre>
+
+<p><div class="rs-tip-major">Poznámka: povšimněte si, že skutečně musela být
+provedena statická analýza chování programu, neboť funkce
+<strong>entry_point</strong> je volána v&nbsp;runtime a nikoli v&nbsp;compile
+time.</div></p>
+
+<p><a
+href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_types_5.py">Druhá
+varianta příkladu</a> je prakticky totožná s&nbsp;variantou předchozí, ovšem až
+na ten detail, že funkce <strong>f</strong> je vždy volána s&nbsp;argumentem
+<strong>param</strong> nastaveným na <strong>True</strong> a tudíž se řízení
+programu nikdy nedostane do větve <i>else</i>. I tento příklad bude možné bez
+problémů přeložit a spustit:</p>
+
+<pre>
+def <strong>f</strong>(param):
+    if param:
+        return 42
+    else:
+        return "foobar"
+&nbsp;
+&nbsp;
+def <strong>entry_point</strong>(argv):
+    z = f(True)
+    print z
+&nbsp;
+    w = f(True)
+    print w
+&nbsp;
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    print "*** target ***"
+    return entry_point, None
+</pre>
+
+<p>Konečně se dostáváme <a
+href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_types_6.py">k&nbsp;poslední
+variantě</a>, ve které se (v&nbsp;runtime) volá funkce <strong>f</strong> opět
+dvakrát, tentokrát však s&nbsp;odlišnou hodnotou parametru:</p>
+
+<pre>
+def <strong>f</strong>(param):
+    if param:
+        return 42
+    else:
+        return "foobar"
+&nbsp;
+&nbsp;
+def <strong>entry_point</strong>(argv):
+    z = f(True)
+    print z
+&nbsp;
+    w = f(False)
+    print w
+&nbsp;
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    print "*** target ***"
+    return entry_point, None
+</pre>
+
+<p>V&nbsp;klasickém Pythonu to v&nbsp;žádném případě není nijak problematické
+chování &ndash; funkce prostě při prvním volání vrátí hodnotu 42 a při volání
+druhém hodnotu &bdquo;foobar&ldquo;. Ovšem překladač RPythonu je v&nbsp;tomto
+ohledu striktnější a vypíše chybu při překladu. Ta může vypadat poněkud
+krypticky, ovšem důležité je hlášení &bdquo;UnionError&ldquo; a také přesné
+určení místa, kde k&nbsp;chybě došlo:</p>
+
+<pre>
+[translation:ERROR] <strong>UnionError</strong>: 
+&nbsp;
+Offending annotations:
+  SomeInteger(const=42, knowntype=int, nonneg=True, unsigned=False)
+  SomeString(const='foobar', no_nul=True)
+&nbsp;
+In &lt;FunctionGraph of (rpython_types_6:1)f at 0x7f60791ea890&gt;:
+&lt;return block&gt;
+Processing block:
+ block@3[param_0] is a &lt;class 'rpython.flowspace.flowcontext.SpamBlock'&gt; 
+ in (<strong>rpython_types_6:1</strong>)f 
+ containing the following operations: 
+       v2 = bool(param_0) 
+ --end--
+</pre>
+
+
+
+<p><a name="k03"></a></p>
+<h2 id="k03">3. (Ne)podpora speciálních metod v&nbsp;RPythonu</h2>
+
+<p>Další omezení RPythonu, o němž je dobré vědět, spočívá v&nbsp;tom, že
+některé speciální metody nejsou v&nbsp;kódu (při svém volání) podporovány. Ze
+všech speciálních metod <a
+href="https://docs.python.org/3/reference/datamodel.html#special-method-names">podporovaných
+Pythonem</a> podporuje RPython pouze <strong>__init__</strong> (pochopitelně),
+<strong>__del__</strong> a kde to má význam, tak i <strong>__len__</strong>,
+<strong>__getitem__</strong>, <strong>__setitem__</strong>,
+<strong>__getslice__</strong>, <strong>__setslice__</strong> a konečně
+<strong>__iter__</strong>. Samozřejmě si můžete vytvořit implementace všech
+speciálních metod, ovšem problém nastane při jejich nepřímém volání. Opět si
+ukažme <a
+href="https://github.com/tisnik/rpython-examples/blob/master/examples/plus_operator.py">příklad</a>,
+v&nbsp;němž jsou deklarovány a následně i použity speciální metody
+<strong>__add__</strong> a <strong>__str__</strong>:</p>
+
+<pre>
+class <strong>Foo</strong>:
+    def <strong>__init__</strong>(self, value):
+        self._value = value
+&nbsp;
+    def <strong>__add__</strong>(self, other):
+        return Foo(self._value + other._value)
+&nbsp;
+    def <strong>__str__</strong>(self):
+        return str(self._value)
+&nbsp;
+&nbsp;
+&nbsp;
+def <strong>entry_point</strong>(argv):
+    f1 = Foo(1)
+    f2 = Foo(2)
+&nbsp;
+    f3 = f1 + f2
+&nbsp;
+    print(f1)
+    print(f2)
+    print(f3)
+&nbsp;
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    print "*** target ***"
+    return entry_point, None
+</pre>
+
+<p>Při překladu nastane tato chyba s&nbsp;kryptickým chybovým hlášením:</p>
+
+<pre>
+[translation:ERROR] <strong>AnnotatorError</strong>: 
+&nbsp;
+Blocked block -- operation cannot succeed
+&nbsp;
+    f3_0 = add(f1_0, f2_0)
+&nbsp;
+In &lt;FunctionGraph of (plus_operator:13)entry_point at 0x7fddd3897910&gt;:
+Happened at file plus_operator.py line 17
+&nbsp;
+        f1 = Foo(1)
+        f2 = Foo(2)
+    
+==&gt;     f3 = f1 + f2
+    
+        print(f1)
+        print(f2)
+        print(f3)
+&nbsp;
+Known variable annotations:
+ f1_0 = SomeInstance(can_be_None=False, classdef=plus_operator.Foo)
+ f2_0 = SomeInstance(can_be_None=False, classdef=plus_operator.Foo)
+</pre>
+
+<p>Úprava je prozatím jediná možná &ndash; volat nepodporované speciální metody
+explicitně, což je použito <a
+href="https://github.com/tisnik/rpython-examples/blob/master/examples/plus_method.py">v&nbsp;dalším
+příkladu</a>:</p>
+
+<pre>
+class <strong>Foo</strong>:
+    def <strong>__init__</strong>(self, value):
+        self._value = value
+&nbsp;
+    def <strong>__add__</strong>(self, other):
+        return Foo(self._value + other._value)
+&nbsp;
+    def <strong>__str__</strong>(self):
+        return str(self._value)
+&nbsp;
+&nbsp;
+def <strong>entry_point</strong>(argv):
+    f1 = Foo(1)
+    f2 = Foo(2)
+&nbsp;
+    f3 = f1.__add__(f2)
+&nbsp;
+    print(f1.__str__())
+    print(f2.__str__())
+    print(f3.__str__())
+&nbsp;
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    print "*** target ***"
+    return entry_point, None
+</pre>
+
+<p>Tento příklad již bude možné korektně přeložit i spustit.</p>
+
+
+
+<p><a name="k04"></a></p>
+<h2 id="k04">4. Podporované a nepodporované operace při zpracování seznamů</h2>
+
+<p>Seznamy jakožto jedny ze základních datových typů Pythonu jsou
+v&nbsp;RPythonu samozřejmě podporovány, ale opět s&nbsp;několika omezeními.
+První omezení spočívá v&nbsp;tom, že seznamy musí být <i>homogenní</i>,
+tj.&nbsp;všechny jejich prvky musí být stejného typu (popř.&nbsp;mohou být
+nastaveny na <strong>None</strong>). <a
+href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_list.py">V&nbsp;dalším
+příkladu</a> není tato podmínka splněna a proto příklad nepůjde přeložit:</p>
+
+<pre>
+def <strong>entry_point</strong>(argv):
+    l1 = [1, 2, 3, 4]
+    l2 = ['a', 'b', 'c', 'd']
+    l3 = [1, 'a']
+&nbsp;
+    print l1
+    print l2
+    print l3
+&nbsp;
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    print "*** target ***"
+    return entry_point, None
+</pre>
+
+<p>Při pokusu o překlad opět dostaneme hlášení o chybě typu
+<strong>UnionError</strong>:</p>
+
+<pre>
+[translation:ERROR] <strong>UnionError</strong>: 
+&nbsp;
+Offending annotations:
+  SomeInteger(const=1, knowntype=int, nonneg=True, unsigned=False)
+  SomeChar(const='a', no_nul=True)
+&nbsp;
+&nbsp;
+    l3_0 = newlist((1), ('a'))
+&nbsp;
+In &lt;FunctionGraph of (rpython_list:1)entry_point at 0x7f795b6c0750&gt;:
+Happened at file rpython_list.py line 4
+&nbsp;
+        l1 = [1, 2, 3, 4]
+        l2 = ['a', 'b', 'c', 'd']
+==&gt;     <strong>l3 = [1, 'a']</strong>
+    
+        print l1
+        print l2
+        print l3
+</pre>
+
+<p>Navíc ještě RPython vypíše doplňující informace o právě zpracovávaném bloku
+programu:</p>
+
+<pre>
+Known variable annotations:
+&nbsp;
+Processing block:
+ block@12[argv_0] is a &lt;class 'rpython.flowspace.flowcontext.SpamBlock'&gt; 
+ in (rpython_list:1)entry_point 
+ containing the following operations: 
+       l1_0 = newlist((1), (2), (3), (4)) 
+       l2_0 = newlist(('a'), ('b'), ('c'), ('d')) 
+       l3_0 = newlist((1), ('a')) 
+       v0 = str(l1_0) 
+       v1 = simple_call((function rpython_print_item), v0) 
+       v2 = simple_call((function rpython_print_newline)) 
+       v3 = str(l2_0) 
+       v4 = simple_call((function rpython_print_item), v3) 
+       v5 = simple_call((function rpython_print_newline)) 
+       v6 = str(l3_0) 
+       v7 = simple_call((function rpython_print_item), v6) 
+       v8 = simple_call((function rpython_print_newline)) 
+</pre>
+
+
+
+<p><a name="k05"></a></p>
+<h2 id="k05">5. Záporné indexy při výběru podseznamů</h2>
+
+<p>Při výběru prvků ze seznamu je možné používat jak kladné, tak i záporné
+indexy podle toho, zda potřebujeme prvky vybírat od začátku či od konce
+seznamu. Omezení však existuje při výběru podseznamů s&nbsp;použitím operátoru
+<strong>[od:do]</strong>. V&nbsp;tomto případě není možné použít krok (je vždy
+nastaven na jedničku) a navíc jediný podporovaný záporný index (pro indexování
+od konce seznamu) může mít hodnotu pouze -1; další hodnoty nejsou povoleny. To
+například znamená, že <a
+href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_list_slicing.py">tento
+demonstrační příklad</a> opět nepůjde přeložit, i když se jedná o korektní kód
+v&nbsp;Pythonu. RPython ovšem (v&nbsp;současné verzi) nemůže odvodit tvar
+výsledného kódu:</p>
+
+<pre>
+def <strong>entry_point</strong>(argv):
+    t = ["a", "b", "c", "d"]
+&nbsp;
+    for i in range(len(t)):
+        print i, t[:-1-i]
+&nbsp;
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    print "*** target ***"
+    return entry_point, None
+</pre>
+
+<p>Chybové hlášení v&nbsp;tomto případě opět obsahuje smysluplnou zprávu:</p>
+
+<pre>
+[translation:ERROR] AnnotatorError: 
+&nbsp;
+<strong>slicing: not proven to have non-negative stop</strong>
+&nbsp;
+&nbsp;
+    v1 = getslice(t_0, (None), v0)
+&nbsp;
+In &lt;FunctionGraph of (rpython_list_slicing:1)entry_point at 0x7fa669592910&gt;:
+Happened at file rpython_list_slicing.py line 5
+&nbsp;
+==&gt;         print i, t[:-1-i]
+&nbsp;
+Known variable annotations:
+ t_0 = SomeList(listdef=&lt;[SomeChar(no_nul=True)]&gt;)
+ v0 = SomeInteger(knowntype=int, nonneg=False, unsigned=False)
+&nbsp;
+Processing block:
+ block@46[v2...] is a &lt;class 'rpython.flowspace.flowcontext.SpamBlock'&gt; 
+ in (rpython_list_slicing:1)entry_point 
+ containing the following operations: 
+       v3 = str(i_0) 
+       v4 = simple_call((function rpython_print_item), v3) 
+       v0 = sub((-1), i_0) 
+       v1 = getslice(t_0, (None), v0) 
+       v5 = str(v1) 
+       v6 = simple_call((function rpython_print_item), v5) 
+       v7 = simple_call((function rpython_print_newline)) 
+</pre>
+
+
+
+<p><a name="k06"></a></p>
+<h2 id="k06">6. Práce s&nbsp;n-ticemi v&nbsp;RPythonu</h2>
+
+<p>N-tice jsou v&nbsp;RPythonu sice taktéž podporovány, ale existuje zde jedno
+poměrně zásadní omezení &ndash; indexy použité pro výběr prvků n-tic musí být
+konstantní již v&nbsp;době překladu (<i>compile time</i>). To například
+znamená, že <a
+href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_tuple.py">následující
+demonstrační příklad</a> nebude korektně přeložen:</p>
+
+<pre>
+def <strong>entry_point</strong>(argv):
+    t = ("a", "b", "c", "d")
+&nbsp;
+    for i in range(len(t)):
+        print i, t[i]
+&nbsp;
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    print "*** target ***"
+    return entry_point, None
+</pre>
+
+<p>Zkrácená chyba při překladu nyní obsahuje jednoznačnou zprávu:</p>
+
+<pre>
+[translation:ERROR] <strong>TyperError: non-constant tuple index</strong>
+.. (rpython_tuple:1)entry_point
+.. block@34[v13...] with 1 exits
+.. v14 = getitem((('a', 'b', 'c', 'd')), i_0)
+</pre>
+
+<p>Jedno z&nbsp;řešení spočívá v&nbsp;převodu n-tice na seznam (ostatně použití
+nekonstantních indexů při práci s&nbsp;n-ticemi může znamenat, že se tento
+datový typ nepoužívá v&nbsp;původním významu a že se spíše trošku zneužívá
+toho, že n-tice jsou neměnitelné).</p>
+
+
+
+<p><a name="k07"></a></p>
+<h2 id="k07">7. Nejednoznačnost při volání metody potenciálně různých tříd</h2>
+
+<pre>
+class <strong>ClassX</strong>:
+    def <strong>foo</strong>(self):
+        print("ClassX.foo")
+&nbsp;
+&nbsp;
+class <strong>ClassY</strong>:
+    def <strong>foo</strong>(self):
+        print("ClassY.foo")
+&nbsp;
+&nbsp;
+def <strong>entry_point</strong>(argv):
+    obj = ClassX() if len(argv) == 3 else ClassY()
+    obj.foo()
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    return entry_point, None
+</pre>
+
+<pre>
+[translation:ERROR] UnionError: 
+&nbsp;
+RPython cannot unify instances with no common base class
+&nbsp;
+Offending annotations:
+  SomeInstance(can_be_None=False, classdef=classes1.ClassY)
+  SomeInstance(can_be_None=False, classdef=classes1.ClassX)
+&nbsp;
+In &lt;FunctionGraph of (classes1:11)entry_point at 0x7f9e866d6810&gt;:
+Happened at file classes1.py line 13
+&nbsp;
+        obj.foo()
+&nbsp;
+Processing block:
+ block@21 is a &lt;class 'rpython.flowspace.flowcontext.SpamBlock'&gt; 
+ in (classes1:11)entry_point 
+ containing the following operations: 
+       obj_0 = simple_call((classobj ClassX)) 
+ --end--
+</pre>
+
+<pre>
+class <strong>SuperClass</strong>:
+    pass
+&nbsp;
+class <strong>ClassX</strong>(SuperClass):
+    def <strong>foo</strong>(self):
+        print("ClassX.foo")
+&nbsp;
+&nbsp;
+class <strong>ClassY</strong>(SuperClass):
+    def <strong>foo</strong>(self):
+        print("ClassY.foo")
+&nbsp;
+&nbsp;
+def <strong>entry_point</strong>(argv):
+    obj = ClassX() if len(argv) == 2 else ClassY()
+    obj.foo()
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    return entry_point, None
+</pre>
+
+
+
+<p><a name="k08"></a></p>
+<h2 id="k08">8. Nejednoznačnost při volání metod s&nbsp;různým počtem argumentů</h2>
+
+<pre>
+class <strong>SuperClass</strong>:
+    pass
+&nbsp;
+class <strong>ClassX</strong>(SuperClass):
+    def <strong>foo</strong>(self):
+        print("ClassX.foo")
+&nbsp;
+&nbsp;
+class <strong>ClassY</strong>(SuperClass):
+    def <strong>foo</strong>(self, dummy):
+        print("ClassY.foo")
+&nbsp;
+&nbsp;
+def <strong>entry_point</strong>(argv):
+    obj = ClassX() if len(argv) == 2 else ClassY()
+    obj.foo()
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    return entry_point, None
+</pre>
+
+<pre>
+[translation:ERROR] AnnotatorError: 
+&nbsp;
+signature mismatch: foo() takes exactly 2 arguments (1 given)
+&nbsp;
+&nbsp;
+Occurred processing the following simple_call:
+  &lt;MethodDesc 'foo' of &lt;ClassDef 'classes3.ClassX'&gt; bound to &lt;ClassDef 'classes3.ClassX'&gt; {}&gt; returning
+&nbsp;
+  &lt;MethodDesc 'foo' of &lt;ClassDef 'classes3.ClassY'&gt; bound to &lt;ClassDef 'classes3.ClassY'&gt; {}&gt; returning
+&nbsp;
+    v1 = simple_call(v0)
+&nbsp;
+In &lt;FunctionGraph of (classes3:14)entry_point at 0x7f8f2736e890&gt;:
+Happened at file classes3.py line 16
+&nbsp;
+==&gt;     obj.foo()
+&nbsp;
+Known variable annotations:
+ v0 = SomePBC(can_be_None=False, descriptions={...2...}, knowntype=instancemethod, subset_of=None)
+&nbsp;
+Processing block:
+ block@39[obj_0] is a &lt;class 'rpython.flowspace.flowcontext.SpamBlock'&gt; 
+ in (classes3:14)entry_point 
+ containing the following operations: 
+       v0 = getattr(obj_0, ('foo')) 
+       v1 = simple_call(v0) 
+       v2 = str(v1) 
+       v3 = simple_call((function rpython_print_item), v2) 
+       v4 = simple_call((function rpython_print_newline)) 
+ --end--
+</pre>
+
+
+
+<p><a name="k09"></a></p>
+<h2 id="k09">9. Použití aserce pro zamezení některých chyb při překladu</h2>
+
+<pre>
+class <strong>SuperClass</strong>:
+    pass
+&nbsp;
+class <strong>ClassX</strong>(SuperClass):
+    def <strong>foo</strong>(self):
+        print("ClassX.foo")
+&nbsp;
+&nbsp;
+class <strong>ClassY</strong>(SuperClass):
+    def <strong>foo</strong>(self, dummy):
+        print("ClassY.foo")
+&nbsp;
+&nbsp;
+def <strong>entry_point</strong>(argv):
+    obj = ClassX() if len(argv) == 2 else ClassY()
+    <strong>assert isinstance(obj, ClassX)</strong>
+    obj.foo()
+    return 0
+&nbsp;
+&nbsp;
+def <strong>target</strong>(driver, args):
+    return entry_point, None
+</pre>
+
+
+
+<p><a name="k10"></a></p>
+<h2 id="k10">10. Alternativní přístup k&nbsp;překladu Pythonu do nativního kódu: projekt Cython</h2>
+
+<p>Krátký seriál o RPythonu sice ještě neskončil, ovšem ve chvíli, kdy již
+známe princip práce RPythonu a jeho omezení (resp.&nbsp;omezení použitého
+jazyka) bude zajímavé si porovnat možnosti tohoto nástroje s&nbsp;dalšími
+překladači, které dokážou transformovat zdrojový kód Pythonu (popř.&nbsp;jeho
+podmnožinu nebo naopak nadmnožinu) do nativního kódu, ať již ve formě
+spustitelného souboru nebo sdílené knihovny. Jedním z&nbsp;nejznámějších a
+pravděpodobně i nejpoužívanějších projektů, které se zaměřují na překlad
+Pythonu, patří nástroj nazvaný <i>Cython</i> (pozor: neplést s&nbsp;podobně
+pojmenovaným <i>CPythonem</i>, což je ovšem označení klasického interpretru
+Pythonu, které se většinou používá ve chvíli, kdy je v&nbsp;nějakém kontextu
+zapotřebí rozlišit <i>CPython</i> od <i>Jythonu</i> a také <i>Iron
+Pythonu</i>). Dnes si popíšeme základní vlastnosti Cythonu a také si ukážeme
+výsledky benchmarku, <a
+href="https://www.root.cz/clanky/rpython-prekvapive-vykonny-dialekt-pythonu-na-nemz-je-zalozen-pypy/">o
+němž jsme se zmínili minule</a>, který bude upraven pro Cython.</p>
+
+*** image ***
+<p><i>Obrázek 1: Logo Cythonu.</i></p>
+
+
+
+<p><a name="k11"></a></p>
+<h2 id="k11">11. Princip práce Cythonu</h2>
+
+<p>Tento překladač pracuje poněkud odlišným způsobem než RPython. Zatímco se
+totiž RPython snaží odvozovat datové typy proměnných, argumentů i návratových
+hodnot funkcí na základě analýzy grafu (CFG), používá Cython přímý překlad
+Pythonu do programovacího jazyka C. Ve chvíli, kdy Cython nezná datový typ
+funkce/proměnné/argumentu, použije <strong>PyObject *</strong>, tedy ukazatel
+na datovou strukturu reprezentující v&nbsp;Pythonu libovolnou hodnotu.
+V&nbsp;dalším kódu je samozřejmě nutné z&nbsp;tohoto objektu získat skutečnou
+hodnotu. I takto vlastně velmi primitivně provedený překlad dokáže programový
+kód zrychlit, což ostatně uvidíme i ve výsledku benchmarků. Cython jde ale
+ještě dále, protože rozšiřuje jazyk Python o další klíčová slova, především pak
+o slovo <strong>cdef</strong>. Toto klíčové slovo je možné použít pro přesnou
+specifikaci typu proměnné či argumentu, a to způsobem, který plně vychází
+z&nbsp;programovacího jazyka C. Tato typová informace samozřejmě umožňuje
+provedení dalších optimalizací ve výsledném kódu (opět uvidíme na výsledcích
+benchmarku).</p>
+
+<p><div class="rs-tip-major">Poznámka: zdrojové kódy, v&nbsp;nichž jsou použita
+rozšíření Cythonu, již nejsou plně kompatibilní s&nbsp;Pythonem a z&nbsp;tohoto
+důvodu se většinou ukládají do souborů s&nbsp;koncovkou <strong>.pyx</strong>,
+což je zkratka původně odvozená od projektu <i>Pyrex</i>, z&nbsp;něhož byl
+Cython vyvinut.</div></p>
+
+
+
+<p><a name="k12"></a></p>
+<h2 id="k12">12. Instalace Cythonu</h2>
+
+<p>Samotná instalace Cythonu je velmi jednoduchá, ovšem aby bylo možné skutečně
+překládat Python do nativního kódu, je po instalaci nutné zajistit, aby byl
+v&nbsp;systému nainstalován překladač céčka (GCC, LLVM atd.) a taktéž
+vývojářské verze knihoven CPythonu (<strong>libpython2.7.so</strong>,
+<strong>libpython3.6m.so</strong> atd.). Začněme tedy nejdříve instalací
+Cythonu. Pro tento účel použijeme oblíbený nástroj <strong>pip</strong>.
+Samotná instalace je většinou záležitostí několika sekund:</p>
+
+<pre>
+$ <strong>pip3 install --user cython</strong>
+&nbsp;
+Collecting cython
+  Cache entry deserialization failed, entry ignored
+  Downloading https://files.pythonhosted.org/packages/6f/79/d8e2cd00bea8156a995fb284ce7b6677c49eccd2d318f73e201a9ce560dc/Cython-0.28.3-cp36-cp36m-manylinux1_x86_64.whl (3.4MB)
+    100% |████████████████████████████████| 3.4MB 443kB/s 
+Installing collected packages: cython
+Successfully installed cython-0.28.3
+You are using pip version 9.0.1, however version 10.0.1 is available.
+You should consider upgrading via the 'pip install --upgrade pip' command.
+</pre>
+
+<p>Po instalaci si můžeme ověřit, že je Cython dostupný:</p>
+
+<pre>
+$ cython --version
+&nbsp;
+Cython version 0.28.3
+</pre>
+
+<p>Taktéž je vhodné ověřit existenci nástroje <strong>cythonize</strong>, o
+němž se dále taktéž zmíníme:</p>
+
+<pre>
+$ <strong>cythonize --help</strong>
+Usage: cythonize [options] [sources and packages]+
+&nbsp;
+Options:
+  -h, --help            show this help message and exit
+  -X NAME=VALUE,..., --directive=NAME=VALUE,...
+                        set a compiler directive
+  -s NAME=VALUE, --option=NAME=VALUE
+                        set a cythonize option
+  -3                    use Python 3 syntax mode by default
+  -a, --annotate        generate annotated HTML page for source files
+  -x PATTERN, --exclude=PATTERN
+                        exclude certain file patterns from the compilation
+  -b, --build           build extension modules using distutils
+  -i, --inplace         build extension modules in place using distutils
+                        (implies -b)
+  -j N, --parallel=N    run builds in N parallel jobs (default: 12)
+  -f, --force           force recompilation
+  -q, --quiet           be less verbose during compilation
+  --lenient             increase Python compatibility by ignoring some compile
+                        time errors
+  -k, --keep-going      compile as much as possible, ignore compilation
+                        failures
+</pre>
+
+<p>Dále si pro jistotu ověřte existenci překladače céčka a linkeru:</p>
+
+<pre>
+$ <strong>gcc --version</strong>
+&nbsp;
+gcc (Ubuntu 4.8.4-2ubuntu1~14.04.4) 4.8.4
+Copyright (C) 2013 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+&nbsp;
+&nbsp;
+$ <strong>ld --version</strong>
+&nbsp;
+GNU ld (GNU Binutils for Ubuntu) 2.24
+Copyright 2013 Free Software Foundation, Inc.
+This program is free software; you may redistribute it under the terms of
+the GNU General Public License version 3 or (at your option) a later version.
+This program has absolutely no warranty.
+</pre>
+
+
+
+<p><a name="k13"></a></p>
+<h2 id="k13">13. Ukázka překladu Pythonu do spustitelného (nativního) programu</h2>
+
+<p>Při popisu Cythonu začneme s&nbsp;tím nejjednodušším příkladem &ndash;
+s&nbsp;klasickým &bdquo;Hello world!&ldquo;. Ten se v&nbsp;Pythonu pochopitelně
+zapíše následovně:</p>
+
+<pre>
+print("Hello world!")
+</pre>
+
+<p>Překlad se provádí ve třech krocích, přičemž my si pro jednoduchost dva
+poslední kroky spojíme:</p>
+
+<ol>
+
+<li>Transformace zdrojového kódu Pythonu do ANSI C. Pro tento účel se používá
+nástroj <strong>cython</strong>, kterému můžeme volbou <strong>--embed</strong>
+říct, že má vytvořit soubor s&nbsp;funkcí <strong>main</strong> (tedy že
+nebudeme chtít překládat sdílenou knihovnu).</li>
+
+<li>Překlad zdrojového kódu z&nbsp;ANSI C do objektového souboru. Pro
+jednoduchost použijeme všudypřítomné <strong>gcc</strong>, ale samozřejmě lze
+použít i další překladače.</li>
+
+<li>Slinkování objektového souboru s&nbsp;potřebnými knihovnami a
+s&nbsp;vytvořením spustitelné aplikace. Buď se přímo zavolá linker
+<strong>ld</strong>, nebo se tento bod spojí s&nbsp;bodem předchozím (linker se
+tudíž zavolá implicitně z&nbsp;gcc).</li>
+
+</ol>
+
+<p>Na mém konkrétním počítači s&nbsp;Fedorou 27 bude překlad proveden těmito
+dvěma kroky:</p>
+
+<pre>
+cython --embed hello_world.py
+&nbsp;
+gcc -O9 -I /usr/include/python3.6m/ -L/usr/lib64 -lpython3.6m hello_world.c -o hello_world
+</pre>
+
+<p>Především druhý krok nemusí být vašem systému fungovat, protože se budou
+lišit cesty k&nbsp;hlavičkovým souborům i k&nbsp;potřebným knihovnám. Jak tento
+nedostatek odstranit si ukážeme <a href="#k13">v&nbsp;navazující
+kapitole</a>.</p>
+
+
+
+<p><a name="k14"></a></p>
+<h2 id="k14">14. Program pro vytvoření skriptu určeného pro překlad Pythonovského programu do nativního kódu</h2>
+
+<p></p>
+
+<pre>
+<i># vim: set fileencoding=utf-8</i>
+&nbsp;
+from distutils import sysconfig
+from sys import argv, exit
+&nbsp;
+CC = "gcc"
+CC_OPT = "-O9"
+&nbsp;
+INCLUDE_DIR = sysconfig.get_python_inc()
+LIBRARY_DIR = sysconfig.get_config_var('LIBDIR')
+PYTHON_LIB = sysconfig.get_config_var('LIBRARY')[3:-2]
+SYSTEM_LIBS = sysconfig.get_config_var('SYSLIBS')
+&nbsp;
+&nbsp;
+if __name__ == "__main__":
+    if len(argv) &lt;= 1:
+        print("usage: python make_build_script program_name &gt; script.sh")
+        exit(1)
+&nbsp;
+    progname = argv[1]
+&nbsp;
+    print("# very simple variant of the build script tied to specific Python version and an CPU architecture\n")  # noqa
+&nbsp;
+    print("rm -f {progname}.c".format(progname=progname))
+    print("rm -f {progname}\n".format(progname=progname))
+&nbsp;
+    print("cython --embed {progname}.py\n".format(progname=progname))
+    print("{cc} {cc_opt} -I {include_dir} -L{library_dir} -l{python_lib} {system_libs} {progname}.c -o {progname}".format(  # noqa
+        cc=CC, cc_opt=CC_OPT, include_dir=INCLUDE_DIR, library_dir=LIBRARY_DIR,
+        python_lib=PYTHON_LIB, system_libs=SYSTEM_LIBS, progname=progname))
+</pre>
+
+<pre>
+<i># very simple variant of the build script tied to specific Python version and an CPU architecture</i>
+&nbsp;
+rm -f hello_world.c
+rm -f hello_world
+&nbsp;
+cython --embed hello_world.py
+&nbsp;
+gcc -O9 -I /usr/include/python2.7 -L/usr/lib -lpython2.7 -lm hello_world.c -o hello_world
+</pre>
+
+<pre>
+<i># very simple variant of the build script tied to specific Python version and an CPU architecture</i>
+&nbsp;
+rm -f hello_world.c
+rm -f hello_world
+&nbsp;
+cython --embed hello_world.py
+&nbsp;
+gcc -O9 -I /usr/include/python2.7 -L/usr/lib64 -lpython2.7 -lm hello_world.c -o hello_world
+</pre>
+
+<pre>
+<i># very simple variant of the build script tied to specific Python version and an CPU architecture</i>
+&nbsp;
+rm -f hello_world.c
+rm -f hello_world
+&nbsp;
+cython --embed hello_world.py
+&nbsp;
+gcc -O9 -I /usr/include/python3.4m -L/usr/lib -lpython3.4m -lm hello_world.c -o hello_world
+</pre>
+
+<pre>
+<i># very simple variant of the build script tied to specific Python version and an CPU architecture</i>
+&nbsp;
+rm -f hello_world.c
+rm -f hello_world
+&nbsp;
+cython --embed hello_world.py
+&nbsp;
+gcc -O9 -I /usr/include/python3.6m -L/usr/lib64 -lpython3.6m -lm hello_world.c -o hello_world
+</pre>
+
+
+
+<p><a name="k15"></a></p>
+<h2 id="k15">15. Soubor Makefile pro překlad a slinkování programu typu &bdquo;Hello world!&ldquo;</h2>
+
+<pre>
+PYTHON=python3
+COMPILER=gcc
+LINKER=gcc
+&nbsp;
+# GCCOPTIONS=-O9 -ffast-math
+CCOPTIONS=-O9
+&nbsp;
+INCLUDE_DIR:=$(shell $(PYTHON) -c "from distutils import sysconfig; print(sysconfig.get_python_inc())")
+LIBRARY_DIR:=$(shell $(PYTHON) -c "from distutils import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+PYTHON_LIB:=$(shell $(PYTHON) -c "from distutils import sysconfig; print(sysconfig.get_config_var('LIBRARY')[3:-2])")
+SYSLIBS:=$(shell $(PYTHON) -c "import distutils.sysconfig; print(distutils.sysconfig.get_config_var('SYSLIBS'))")
+&nbsp;
+&nbsp;
+all: hello_world
+&nbsp;
+hello_world: hello_world.o
+        $(LINKER) -o $@ $^ -L$(LIBRARY_DIR) -l$(PYTHON_LIB) $(SYSLIBS)
+&nbsp;
+hello_world.o: hello_world.c
+        $(COMPILER) $(CCOPTIONS) -I$(INCLUDE_DIR) -c $&lt;
+&nbsp;
+hello_world.c: hello_world.py
+        cython --embed $&lt;
+&nbsp;
+clean:
+        rm -f hello_world
+        rm -f hello_world.c
+        rm -f hello_world.o
+</pre>
+
+
+
+<p><a name="k16"></a></p>
+<h2 id="k16">16. Benchmark pro výpočet Mandelbrotovy množiny &ndash; překlad originálního kódu Cythonem</h2>
+
+<pre>
+#!/usr/bin/env python
+# vim: set fileencoding=utf-8
+
+import palette_mandmap
+from sys import argv, exit
+
+
+def calc_mandelbrot(width, height, maxiter, palette):
+    print("P3")
+    print("{w} {h}".format(w=width, h=height))
+    print("255")
+
+    cy = -1.5
+    for y in range(0, height):
+        cx = -2.0
+        for x in range(0, width):
+            zx = 0.0
+            zy = 0.0
+            i = 0
+            while i < maxiter:
+                zx2 = zx * zx
+                zy2 = zy * zy
+                if zx2 + zy2 > 4.0:
+                    break
+                zy = 2.0 * zx * zy + cy
+                zx = zx2 - zy2 + cx
+                i += 1
+
+            r = palette[i][0]
+            g = palette[i][1]
+            b = palette[i][2]
+            print("{r} {g} {b}".format(r=r, g=g, b=b))
+            cx += 3.0/width
+        cy += 3.0/height
+
+
+if __name__ == "__main__":
+    if len(argv) < 4:
+        print("usage: python mandelbrot width height maxiter")
+        exit(1)
+
+    width = int(argv[1])
+    height = int(argv[2])
+    maxiter = int(argv[3])
+    calc_mandelbrot(width, height, maxiter, palette_mandmap.palette)
+</pre>
+
+<pre>
+PYTHON=python3
+COMPILER=gcc
+LINKER=gcc
+
+# GCCOPTIONS=-O9 -ffast-math
+CCOPTIONS=-O9
+
+INCLUDE_DIR:=$(shell $(PYTHON) -c "from distutils import sysconfig; print(sysconfig.get_python_inc())")
+LIBRARY_DIR:=$(shell $(PYTHON) -c "from distutils import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+PYTHON_LIB:=$(shell $(PYTHON) -c "from distutils import sysconfig; print(sysconfig.get_config_var('LIBRARY')[3:-2])")
+SYSLIBS:=$(shell $(PYTHON) -c "from distutils import sysconfig; print(sysconfig.get_config_var('SYSLIBS'))")
+
+
+all: mandelbrot_cython
+
+mandelbrot_cython: mandelbrot_cython.o
+        $(LINKER) -o $@ $^ -L$(LIBRARY_DIR) -l$(PYTHON_LIB) $(SYSLIBS)
+
+mandelbrot_cython.o: mandelbrot_cython.c
+        $(COMPILER) $(CCOPTIONS) -I$(INCLUDE_DIR) -c $<
+
+mandelbrot_cython.c: mandelbrot_cython.py
+        cython --embed $<
+
+clean:
+        rm -f mandelbrot_cython
+        rm -f mandelbrot_cython.c
+        rm -f mandelbrot_cython.o
+</pre>
+
+
+
+<p><a name="k17"></a></p>
+<h2 id="k17">17. Přidání informace o datových typech argumentů funkce i lokálních proměnných</h2>
+
+
+
+<p><a name="k18"></a></p>
+<h2 id="k18">18. Výsledky benchmarků a možnosti dalšího vylepšení</h2>
+
+<table>
+<tr><th>Rozlišení</th><th>CPython 2</th><th>CPython 3</th><th>Jython</th><th>RPython</th><th>ANSI C</th><th>Cython</th><th>Cython (typy)</th></tr>
+<tr><td>16&times;16</td><td>0,01</td><td>0,03</td><td>2,25</td><td>0,00</td><td>0,00</td><td></td><td></td></tr>
+<tr><td>24&times;24</td><td>0,01</td><td>0,03</td><td>1,87</td><td>0,00</td><td>0,00</td><td></td><td></td></tr>
+<tr><td>32&times;32</td><td>0,02</td><td>0,03</td><td>1,95</td><td>0,00</td><td>0,00</td><td></td><td></td></tr>
+<tr><td>48&times;48</td><td>0,03</td><td>0,04</td><td>2,14</td><td>0,00</td><td>0,00</td><td></td><td></td></tr>
+<tr><td>64&times;64</td><td>0,05</td><td>0,06</td><td>2,02</td><td>0,00</td><td>0,00</td><td></td><td></td></tr>
+<tr><td>96&times;96</td><td>0,09</td><td>0,10</td><td>2,17</td><td>0,01</td><td>0,00</td><td></td><td></td></tr>
+<tr><td>128&times;128</td><td>0,16</td><td>0,16</td><td>2,52</td><td>0,02</td><td>0.00</td><td></td><td></td></tr>
+<tr><td>192&times;192</td><td>0,34</td><td>0,34</td><td>2,73</td><td>0,05</td><td>0.01</td><td></td><td></td></tr>
+<tr><td>256&times;256</td><td>0,57</td><td>0,59</td><td>2,79</td><td>0,07</td><td>0.02</td><td></td><td></td></tr>
+<tr><td>384&times;384</td><td>1,27</td><td>1,34</td><td>3,93</td><td>0,16</td><td>0.04</td><td></td><td></td></tr>
+<tr><td>512&times;512</td><td>2,26</td><td>2,34</td><td>5,48</td><td>0,29</td><td>0.07</td><td></td><td></td></tr>
+<tr><td>768&times;768</td><td>5,08</td><td>5,52</td><td>9,41</td><td>0,65</td><td>0.16</td><td></td><td></td></tr>
+<tr><td>1024&times;1024</td><td>9,32</td><td>9,69</td><td>13,70</td><td>1,17</td><td>0.29</td><td></td><td></td></tr>
+<tr><td>1536&times;1536</td><td>24,48</td><td>21,99</td><td>28,50</td><td>2,61</td><td>0.67</td><td></td><td></td></tr>
+<tr><td>2048&times;2048</td><td>36,27</td><td>36,70</td><td>54,22</td><td>4,62</td><td>1.19</td><td></td><td></td></tr>
+<tr><td>3072&times;3072</td><td>84,82</td><td>83,41</td><td>104,16</td><td>10,53</td><td>2.68</td><td></td><td></td></tr>
+<tr><td>4096&times;4096</td><td>150,31</td><td>152,21</td><td>203,18</td><td>18,64</td><td>4.75</td><td></td><td></td></tr>
+</table>
+
+
+
+<p><a name="k19"></a></p>
+<h2 id="k19">18. Repositář s&nbsp;demonstračními příklady</h2>
+
+<p>Všechny demonstrační příklady, které jsme si v&nbsp;dnešním článku ukázali,
+naleznete na adrese <a
+href="https://github.com/tisnik/rpython-examples">https://github.com/tisnik/rpython-examples</a>.
+Následují odkazy na jednotlivé příklady (pro jejich spuštění je nutné mít
+nainstalován RPython a jeho závislosti, především tedy překladač céčka):</p>
+
+<table>
+<tr><th> #</th><th>Příklad</th><th>Adresa</th></tr>
+<tr><td> 1</td><td>rpython_types_3.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_types_3.py">https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_types_3.py</a></td></tr>
+<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td> 2</td><td>rpython_types_4.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_types_4.py">https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_types_4.py</a></td></tr>
+<tr><td> 3</td><td>rpython_types_5.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_types_5.py">https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_types_5.py</a></td></tr>
+<tr><td> 4</td><td>rpython_types_6.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_types_6.py">https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_types_6.py</a></td></tr>
+<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td> 5</td><td>plus_operator.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/plus_operator.py">https://github.com/tisnik/rpython-examples/blob/master/examples/plus_operator.py</a></td></tr>
+<tr><td> 6</td><td>plus_method.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/plus_method.py">https://github.com/tisnik/rpython-examples/blob/master/examples/plus_method.py</a></td></tr>
+<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td> 7</td><td>rpython_list.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_list.py">https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_list.py</a></td></tr>
+<tr><td> 8</td><td>rpython_list_slicing.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_list_slicing.py">https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_list_slicing.py</a></td></tr>
+<tr><td> 9</td><td>rpython_tuple.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_tuple.py">https://github.com/tisnik/rpython-examples/blob/master/examples/rpython_tuple.py</a></td></tr>
+<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+<tr><td>10</td><td>classes1.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/classes1.py">https://github.com/tisnik/rpython-examples/blob/master/examples/classes1.py</a></td></tr>
+<tr><td>11</td><td>classes2.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/classes2.py">https://github.com/tisnik/rpython-examples/blob/master/examples/classes2.py</a></td></tr>
+<tr><td>12</td><td>classes3.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/classes3.py">https://github.com/tisnik/rpython-examples/blob/master/examples/classes3.py</a></td></tr>
+<tr><td>13</td><td>classes4.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/classes4.py">https://github.com/tisnik/rpython-examples/blob/master/examples/classes4.py</a></td></tr>
+<tr><td>14</td><td>classes5.py</td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/classes5.py">https://github.com/tisnik/rpython-examples/blob/master/examples/classes5.py</a></td></tr>
+</table>
+
+<p>Následuje tabulka s&nbsp;příklady, které souvisejí s&nbsp;Cythonem:</p>
+
+<table>
+<tr><th> #</th><th>Příklad</th><th>Adresa</th></tr>
+<tr><td> 1</td><td></td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/">https://github.com/tisnik/rpython-examples/blob/master/examples/</a></td></tr>
+<tr><td> 2</td><td></td><td><a href="https://github.com/tisnik/rpython-examples/blob/master/examples/">https://github.com/tisnik/rpython-examples/blob/master/examples/</a></td></tr>
+</table>
+
+
+
+<p><a name="k20"></a></p>
+<h2 id="k20">20. Odkazy na Internetu</h2>
+
+<ol>
+
+<li>The Magic of RPython<br />
+<a href="https://refi64.com/posts/the-magic-of-rpython.html">https://refi64.com/posts/the-magic-of-rpython.html</a>
+</li>
+
+<li>RPython: Frequently Asked Questions<br />
+<a href="http://rpython.readthedocs.io/en/latest/faq.html">http://rpython.readthedocs.io/en/latest/faq.html</a>
+</li>
+
+<li>RPython’s documentation<br />
+<a href="http://rpython.readthedocs.io/en/latest/index.html">http://rpython.readthedocs.io/en/latest/index.html</a>
+</li>
+
+<li>RPython (Wikipedia)<br />
+<a href="https://en.wikipedia.org/wiki/PyPy#RPython">https://en.wikipedia.org/wiki/PyPy#RPython</a>
+</li>
+
+<li>Getting Started with RPython<br />
+<a href="http://rpython.readthedocs.io/en/latest/getting-started.html">http://rpython.readthedocs.io/en/latest/getting-started.html</a>
+</li>
+
+<li>PyPy (home page)<br />
+<a href="https://pypy.org/">https://pypy.org/</a>
+</li>
+
+<li>PyPy (dokumentace)<br />
+<a href="http://doc.pypy.org/en/latest/">http://doc.pypy.org/en/latest/</a>
+</li>
+
+<li>Cython (home page)<br />
+<a href="http://cython.org/">http://cython.org/</a>
+</li>
+
+<li>Cython (wiki)<br />
+<a href="https://github.com/cython/cython/wiki">https://github.com/cython/cython/wiki</a>
+</li>
+
+<li>Cython (Wikipedia)<br />
+<a href="https://en.wikipedia.org/wiki/Cython">https://en.wikipedia.org/wiki/Cython</a>
+</li>
+
+<li>Cython (GitHub)<br />
+<a href="https://github.com/cython/cython">https://github.com/cython/cython</a>
+</li>
+
+<li>Localized Type Inference of Atomic Types in Python (2005)<br />
+<a href="http://citeseer.ist.psu.edu/viewdoc/summary?doi=10.1.1.90.3231">http://citeseer.ist.psu.edu/viewdoc/summary?doi=10.1.1.90.3231</a>
+</li>
+
+<li>Numba<br />
+<a href="http://numba.pydata.org/">http://numba.pydata.org/</a>
+</li>
+
+<li>Tutorial: Writing an Interpreter with PyPy, Part 1<br />
+<a href="https://morepypy.blogspot.com/2011/04/tutorial-writing-interpreter-with-pypy.html">https://morepypy.blogspot.com/2011/04/tutorial-writing-interpreter-with-pypy.html</a>
+</li>
+
+<li>List of numerical analysis software<br />
+<a href="https://en.wikipedia.org/wiki/List_of_numerical_analysis_software">https://en.wikipedia.org/wiki/List_of_numerical_analysis_software</a>
+</li>
+
+<li>Pixie: lehký skriptovací jazyk s „kouzelnými“ schopnostmi<br />
+<a href="https://www.root.cz/clanky/pixie-lehky-skriptovaci-jazyk-s-kouzelnymi-schopnostmi/">https://www.root.cz/clanky/pixie-lehky-skriptovaci-jazyk-s-kouzelnymi-schopnostmi/</a>
+</li>
+
+<li>Programovací jazyk Pixie: funkce ze základní knihovny a použití FFI<br />
+<a href="https://www.root.cz/clanky/programovaci-jazyk-pixie-funkce-ze-zakladni-knihovny-a-pouziti-ffi/">https://www.root.cz/clanky/programovaci-jazyk-pixie-funkce-ze-zakladni-knihovny-a-pouziti-ffi/</a>
+</li>
+
+<li>The future can be written in RPython now (článek z&nbsp;roku 2010)<br />
+<a href="http://blog.christianperone.com/2010/05/the-future-can-be-written-in-rpython-now/">http://blog.christianperone.com/2010/05/the-future-can-be-written-in-rpython-now/</a>
+</li>
+
+<li>PyPy is the Future of Python (článek z&nbsp;roku 2010)<br />
+<a href="https://alexgaynor.net/2010/may/15/pypy-future-python/">https://alexgaynor.net/2010/may/15/pypy-future-python/</a>
+</li>
+
+<li>Portal:Python programming<br />
+<a href="https://en.wikipedia.org/wiki/Portal:Python_programming">https://en.wikipedia.org/wiki/Portal:Python_programming</a>
+</li>
+
+<li>Python Implementations: Compilers<br />
+<a href="https://wiki.python.org/moin/PythonImplementations#Compilers">https://wiki.python.org/moin/PythonImplementations#Compilers</a>
+</li>
+
+<li>RPython Frontend and C Wrapper Generator<br />
+<a href="http://www.codeforge.com/article/383293">http://www.codeforge.com/article/383293</a>
+</li>
+
+<li>PyPy’s Approach to Virtual Machine Construction<br />
+<a href="https://bitbucket.org/pypy/extradoc/raw/tip/talk/dls2006/pypy-vm-construction.pdf">https://bitbucket.org/pypy/extradoc/raw/tip/talk/dls2006/pypy-vm-construction.pdf</a>
+</li>
+
+<li>Tutorial: Writing an Interpreter with PyPy, Part 1<br />
+<a href="https://morepypy.blogspot.com/2011/04/tutorial-writing-interpreter-with-pypy.html">https://morepypy.blogspot.com/2011/04/tutorial-writing-interpreter-with-pypy.html</a>
+</li>
+
+<li>EmbeddingCython<br />
+<a href="https://github.com/cython/cython/wiki/EmbeddingCython">https://github.com/cython/cython/wiki/EmbeddingCython</a>
+</li>
+
+<li>The Basics of Cython<br />
+<a href="http://docs.cython.org/en/latest/src/tutorial/cython_tutorial.html">http://docs.cython.org/en/latest/src/tutorial/cython_tutorial.html</a>
+</li>
+
+</ol>
+
+
+
+<p></p><p></p>
+<p><small>Autor: <a href="http://www.fit.vutbr.cz/~tisnovpa">Pavel Tišnovský</a> &nbsp; 2018</small></p>
+</body>
+</html>
+
