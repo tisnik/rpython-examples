@@ -1,3 +1,9 @@
+#!/usr/bin/env rpython
+# vim: set fileencoding=utf-8
+
+# This file needs to be compiled using RPython!
+
+
 class ClassX:
     def foo(self):
         print("ClassX.foo")
